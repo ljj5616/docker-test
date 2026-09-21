@@ -22,29 +22,21 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm test
-      - name: Package application
-        run: tar -czf app.tar.gz src public package.json package-lock.json
-      - uses: actions/upload-artifact@v4
-        with:
-          name: application
-          path: app.tar.gz
-          retention-days: 7
+      - name: Check deployment scripts
+        run: |
+          bash -n scripts/deploy.sh
+          bash -n scripts/deploy-ssh.sh
 
   deploy:
     needs: ci
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.ENABLE_CD == 'true'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    environment: production
     concurrency:
       group: notepad-production
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: application
-          path: artifact
       - name: Deploy over SSH and check health
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}

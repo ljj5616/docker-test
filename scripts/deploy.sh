@@ -1,39 +1,23 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-archive=$(realpath "${1:?Application archive required}")
-base=/opt/notepad
-release="$base/releases/${GITHUB_RUN_ID:?}-${GITHUB_RUN_ATTEMPT:?}"
-previous=$(readlink -f "$base/current" || true)
-mkdir -p "$release"
-tar -xzf "$archive" -C "$release"
-cd "$release"
-npm ci --omit=dev
+cd "$HOME/docker-test"
+command -v pm2 >/dev/null || { echo '먼저 EC2에서 sudo npm install -g pm2를 실행하세요.'; exit 1; }
+[[ "$(git branch --show-current)" == main ]] || { echo 'EC2 프로젝트를 main 브랜치로 변경하세요.'; exit 1; }
+git pull --ff-only origin main
+npm ci
+npm run check
+npm test
+pm2 startOrRestart ecosystem.config.cjs --update-env
+pm2 save
 
-activate() {
-  ln -sfn "$1" "$base/current.next" || return 1
-  mv -Tf "$base/current.next" "$base/current" || return 1
-  sudo -n /usr/bin/systemctl restart notepad
-}
-healthy() {
-  for attempt in {1..15}; do
-    if curl --fail --silent http://127.0.0.1:3000/health >/dev/null &&
-       curl --fail --silent http://127.0.0.1:3000/api/notes >/dev/null; then
-      return 0
-    fi
-    sleep 2
-  done
-  return 1
-}
-
-if activate "$release" && healthy; then
-  echo "Deployment successful: $release"
-else
-  echo 'Deployment failed.' >&2
-  if [[ -n "$previous" && -d "$previous" && "$previous" != "$release" ]]; then
-    echo "Restoring $previous" >&2
-    activate "$previous"
-    healthy || echo 'Rollback health check failed; inspect systemd logs.' >&2
+for attempt in {1..15}; do
+  if curl --fail --silent http://127.0.0.1:3000/health >/dev/null &&
+     curl --fail --silent http://127.0.0.1:3000/api/notes >/dev/null; then
+    echo '배포 완료'
+    exit 0
   fi
-  exit 1
-fi
+  sleep 2
+done
+pm2 logs docker-test --nostream --lines 30
+exit 1
