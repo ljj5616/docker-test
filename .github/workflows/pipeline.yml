@@ -33,7 +33,8 @@ jobs:
   deploy:
     needs: ci
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.ENABLE_CD == 'true'
-    runs-on: [self-hosted, linux, notepad]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     environment: production
     concurrency:
       group: notepad-production
@@ -44,5 +45,10 @@ jobs:
         with:
           name: application
           path: artifact
-      - name: Deploy and check health
-        run: bash scripts/deploy.sh artifact/app.tar.gz
+      - name: Deploy over SSH and check health
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          EC2_KNOWN_HOSTS: ${{ secrets.EC2_KNOWN_HOSTS }}
+        run: bash scripts/deploy-ssh.sh

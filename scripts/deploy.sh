@@ -11,8 +11,8 @@ cd "$release"
 npm ci --omit=dev
 
 activate() {
-  ln -sfn "$1" "$base/current.next"
-  mv -Tf "$base/current.next" "$base/current"
+  ln -sfn "$1" "$base/current.next" || return 1
+  mv -Tf "$base/current.next" "$base/current" || return 1
   sudo -n /usr/bin/systemctl restart notepad
 }
 healthy() {

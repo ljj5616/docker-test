@@ -58,17 +58,17 @@ npm start
 
 ## CD: 일반 Linux 서버에 배포
 
-Ubuntu 계열의 systemd 서버를 기준으로 합니다. CI가 성공한 main 브랜치 커밋만 배포하며, PR은 배포하지 않습니다. 서버 준비 전에는 `ENABLE_CD`가 없어 CD가 자동으로 건너뛰어집니다.
+Amazon Linux 2023의 systemd 서버를 기준으로 합니다. GitHub 제공 runner가 SSH로 EC2에 접속하므로 EC2에 Actions runner를 설치할 필요가 없습니다. CI가 성공한 main 브랜치 커밋만 배포하며, PR은 배포하지 않습니다. 서버 준비 전에는 `ENABLE_CD`가 없어 CD가 자동으로 건너뛰어집니다.
 
 ### 1. 서버 준비
 
 서버에 Node.js 24, npm, curl, tar를 설치하고 `node --version`, `command -v node`를 확인합니다. 서비스 파일은 `/usr/bin/node`를 사용합니다. 설치 경로가 다르면 `deploy/notepad.service`의 ExecStart를 수정하세요.
 
-GitHub 저장소 Settings → Actions → Runners → New self-hosted runner에서 Linux runner를 배포 서버에 등록합니다. 추가 라벨은 `notepad`로 지정하고, 서비스로 실행합니다. 아래 예시는 runner 실행 계정이 `runner`인 경우이며 실제 계정으로 바꾸세요.
+아래 예시는 SSH 접속 계정이 `ec2-user`인 경우입니다. 기존 `npm start`를 Ctrl+C로 종료한 뒤 프로젝트 루트에서 실행하세요. `notepad` 사용자가 이미 있으면 useradd는 생략합니다.
 
 ```sh
 sudo useradd --system --home /var/lib/notepad --shell /usr/sbin/nologin notepad
-sudo install -d -o runner -g runner -m 755 /opt/notepad /opt/notepad/releases
+sudo install -d -o ec2-user -g ec2-user -m 755 /opt/notepad /opt/notepad/releases /opt/notepad/incoming
 sudo install -d -o notepad -g notepad -m 700 /var/lib/notepad
 sudo install -m 644 deploy/notepad.service /etc/systemd/system/notepad.service
 sudo systemctl daemon-reload
@@ -80,18 +80,35 @@ sudo systemctl enable notepad
 `sudo visudo -f /etc/sudoers.d/notepad-deploy`로 아래 한 줄을 추가합니다. `/usr/bin/systemctl` 경로도 서버에서 확인하세요.
 
 ```text
-runner ALL=(root) NOPASSWD: /usr/bin/systemctl restart notepad
+ec2-user ALL=(root) NOPASSWD: /usr/bin/systemctl restart notepad
 ```
 
 ### 2. GitHub 설정
+
+- Settings → Secrets and variables → Actions → Secrets에 아래 값을 등록합니다. 개인키는 저장소나 채팅에 붙여넣지 않습니다.
+
+| Secret | 값 |
+| --- | --- |
+| EC2_HOST | EC2 공인 IPv4 또는 DNS 이름 (프로토콜과 포트 제외) |
+| EC2_USER | ec2-user |
+| EC2_SSH_KEY | EC2 접속용 PEM 개인키 전체 내용 (암호 입력 없이 사용하는 키) |
+| EC2_KNOWN_HOSTS | 검증한 EC2 SSH 호스트 키 항목 |
+
+`EC2_KNOWN_HOSTS`는 AWS 콘솔 등 신뢰할 수 있는 경로로 접속한 EC2 터미널에서 아래 명령으로 만듭니다. `YOUR_EC2_HOST`는 위 EC2_HOST와 동일하게 바꿉니다. 출력된 한 줄을 Secret 값으로 저장합니다.
+
+```sh
+sudo awk '{print "YOUR_EC2_HOST " $1 " " $2}' /etc/ssh/ssh_host_ed25519_key.pub
+```
+
+EC2는 GitHub runner에서 접근 가능한 주소여야 하며, 보안 그룹에서 해당 배포 실행기의 SSH(TCP 22) 접근을 허용해야 합니다. 내 PC IP만 허용한 규칙으로는 GitHub runner가 접속할 수 없습니다. 일반 GitHub 제공 runner의 출발 IP는 고정되지 않으므로 허용할 네트워크 범위를 별도로 계획하세요.
 
 - Settings → Environments에서 `production`을 생성합니다. 필요하면 배포 승인자를 지정합니다.
 - Settings → Secrets and variables → Actions → Variables에 `ENABLE_CD`를 값 `true`로 추가합니다.
 - main 브랜치에 push하거나 Actions에서 워크플로를 main으로 수동 실행합니다.
 
-CI 아티팩트를 다운로드한 뒤 `/opt/notepad/releases/<실행번호>-<시도번호>`에 풀고, `current` 링크를 교체하고 systemd 서비스를 재시작합니다. 상태 및 메모 조회 API를 확인하며, 실패하면 이전 릴리스가 있는 경우 복원합니다. 첫 배포 실패 시에는 이전 버전이 없으므로 로그를 확인해야 합니다.
+GitHub runner가 CI 아티팩트를 다운로드하고 SCP로 `/opt/notepad/incoming/<실행번호>-<시도번호>`에 전송합니다. SSH로 배포 스크립트를 실행해 `/opt/notepad/releases/<실행번호>-<시도번호>`에 풀고, `current` 링크를 교체하고 systemd 서비스를 재시작합니다. 상태 및 메모 조회 API를 확인하며, 실패하면 이전 릴리스가 있는 경우 복원합니다. 첫 배포 실패 시에는 이전 버전이 없으므로 로그를 확인해야 합니다.
 
-메모 파일은 배포 디렉터리 밖인 `/var/lib/notepad/notes.json`에 있어 재배포해도 유지됩니다. 릴리스는 자동 삭제하지 않습니다. 오래된 릴리스는 현재 및 복구용 버전을 남기고 관리하세요.
+메모 파일은 배포 디렉터리 밖인 `/var/lib/notepad/notes.json`에 있어 재배포해도 유지됩니다. 기존 수동 실행의 `data/notes.json`은 자동 이동되지 않습니다. 기존 메모가 필요하면 서버를 종료한 상태에서 해당 파일을 새 저장 위치로 복사하고 소유자를 `notepad:notepad`로 설정하세요. 릴리스와 incoming 파일은 자동 삭제하지 않습니다. 오래된 파일은 현재 및 복구용 버전을 남기고 관리하세요.
 
 ### 3. 접속 및 확인
 
@@ -109,7 +126,7 @@ sudo journalctl -u notepad -n 100 --no-pager
 curl http://127.0.0.1:3000/health
 ```
 
-이 앱은 로그인 없이 메모를 공유하는 학습용 서비스입니다. 외부 공개가 필요하면 접근 제어와 HTTPS를 구성하세요. self-hosted runner는 신뢰할 수 있는 코드만 실행하는 저장소에서 사용하세요.
+이 앱은 로그인 없이 메모를 공유하는 학습용 서비스입니다. 외부 공개가 필요하면 접근 제어와 HTTPS를 구성하세요.
 
 ## 다음 과제 단계
 
