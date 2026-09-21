@@ -1,0 +1,16 @@
+.git
+.github
+.codex
+.agents
+node_modules
+data
+coverage
+test
+scripts
+.env
+.env.*
+*.pem
+*.key
+*.log
+README.md
+ecosystem.config.cjs

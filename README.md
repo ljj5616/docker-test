@@ -1,6 +1,29 @@
 # docker-test — 간단한 메모장
 
-Node.js 입력창과 저장 버튼으로 구성한 메모장입니다. 메모는 `data/notes.json`에 저장됩니다. 컨테이너와 DB 설치는 필요 없습니다.
+Node.js 입력창과 저장 버튼으로 구성한 메모장입니다. 메모는 JSON 파일에 저장됩니다. Node.js 또는 Docker로 실행할 수 있으며 DB 설치는 필요 없습니다.
+
+## Docker로 실행
+
+Docker가 실행 중인 환경에서 프로젝트 루트의 Dockerfile로 이미지를 만듭니다.
+
+```sh
+docker build -t docker-test .
+docker run -d --name docker-test-web -p 3000:3000 -v docker-test-data:/app/data docker-test
+```
+
+로컬에서는 http://localhost:3000, EC2에서는 `http://EC2공인IP:3000`으로 접속합니다. EC2 보안 그룹에서 3000번 포트 접근이 허용되어 있어야 합니다.
+
+이미 PM2 앱이 3000번 포트를 사용 중이라면 먼저 `pm2 stop docker-test`를 실행하세요. 기존 앱을 유지한 채 시험하려면 `-p 3001:3000`으로 실행하고 3001번 포트로 접속할 수 있습니다.
+
+`-v docker-test-data:/app/data`는 메모를 Docker 볼륨에 저장합니다. 컨테이너를 삭제해도 해당 볼륨을 다시 연결하면 메모가 유지됩니다. 기존 PM2 앱의 data/notes.json은 이 볼륨으로 자동 복사되지 않습니다.
+
+```sh
+docker logs docker-test-web
+docker stop docker-test-web
+docker start docker-test-web
+```
+
+컨테이너에서는 PM2 없이 Node.js를 직접 실행합니다. 현재 GitHub Actions 배포는 기존 PM2 방식이며, Docker 자동 배포는 다음 단계에서 변경합니다.
 
 ## 로컬 실행
 
