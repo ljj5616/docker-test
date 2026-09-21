@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>작은 메모장</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <main>
+    <header><span class="eyebrow">MY LITTLE NOTEPAD</span><h1>작은 메모장<span>.</span></h1><p>떠오르는 단어, 잊고 싶지 않은 문장을 담아보세요.</p></header>
+    <section class="editor" aria-label="새 메모">
+      <form id="note-form">
+        <label for="content">지금, 어떤 생각을 하고 있나요?</label>
+        <textarea id="content" name="content" maxlength="10000" required placeholder="여기에 자유롭게 적어주세요…"></textarea>
+        <div class="toolbar"><span id="count">0 / 10,000</span><button id="save" type="submit">메모 저장 <span aria-hidden="true">↗</span></button></div>
+      </form>
+      <p id="status" role="status" aria-live="polite"></p>
+    </section>
+    <section class="saved" aria-labelledby="saved-title"><div class="section-heading"><h2 id="saved-title">차곡차곡 쌓인 메모</h2><span id="total">0개</span></div><div id="notes"><p class="empty">메모를 불러오는 중입니다.</p></div></section>
+    <footer>작은 생각도 소중하게, 한 줄씩.</footer>
+  </main>
+</body>
+</html>
