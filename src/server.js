@@ -86,7 +86,7 @@ export function createApp({ dataDir = process.env.DATA_DIR || path.join(root, 'd
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const server = createApp();
   const port = Number(process.env.PORT || 3000);
-  const host = process.env.HOST || '127.0.0.1';
+  const host = process.env.HOST || '0.0.0.0';
   server.listen(port, host, () => console.log(`메모장 실행: http://${host}:${port}`));
   for (const signal of ['SIGINT', 'SIGTERM']) {
     process.on(signal, () => {
