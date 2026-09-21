@@ -1,4 +1,4 @@
-name: Node.js CI and CD
+name: Docker CI and ECR CD
 
 on:
   push:
@@ -9,6 +9,11 @@ on:
 
 permissions:
   contents: read
+
+env:
+  AWS_REGION: ap-northeast-2
+  ECR_REGISTRY: 514287510278.dkr.ecr.ap-northeast-2.amazonaws.com
+  ECR_REPOSITORY: docker-test
 
 jobs:
   ci:
@@ -26,9 +31,53 @@ jobs:
         run: |
           bash -n scripts/deploy.sh
           bash -n scripts/deploy-ssh.sh
+          bash -n scripts/test-container.sh
+      - name: Test deployment failure handling
+        run: bash test/deploy.test.sh
+      - name: Build Docker image
+        run: docker build -t docker-test:ci .
+      - name: Test container saving and restart
+        run: bash scripts/test-container.sh
+      - name: Save tested image
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: docker save docker-test:ci | gzip > image.tar.gz
+      - uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        with:
+          name: tested-image
+          path: image.tar.gz
+          retention-days: 1
+
+  publish:
+    needs: ci
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: tested-image
+      - name: Authenticate to AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::514287510278:role/github-docker-test-ecr
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@v2
+      - name: Push tested image to ECR
+        id: image
+        run: |
+          docker load -i image.tar.gz
+          IMAGE="$ECR_REGISTRY/$ECR_REPOSITORY:$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          docker tag docker-test:ci "$IMAGE"
+          docker push "$IMAGE"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
 
   deploy:
-    needs: ci
+    needs: [ci, publish]
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -43,4 +92,5 @@ jobs:
           EC2_USER: ${{ secrets.EC2_USER }}
           EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
           EC2_KNOWN_HOSTS: ${{ secrets.EC2_KNOWN_HOSTS }}
+          DEPLOY_IMAGE: ${{ needs.publish.outputs.image }}
         run: bash scripts/deploy-ssh.sh

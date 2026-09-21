@@ -1,23 +1,55 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+image="${1:?ECR image required}"
+registry=514287510278.dkr.ecr.ap-northeast-2.amazonaws.com
+[[ "$image" =~ ^514287510278\.dkr\.ecr\.ap-northeast-2\.amazonaws\.com/docker-test:[a-f0-9]{40}-[0-9]+-[0-9]+$ ]] || exit 1
+command -v aws >/dev/null
+command -v docker >/dev/null
+docker info >/dev/null
+aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin "$registry"
+docker pull "$image"
 
-cd "$HOME/docker-test"
-command -v pm2 >/dev/null || { echo '먼저 EC2에서 sudo npm install -g pm2를 실행하세요.'; exit 1; }
-[[ "$(git branch --show-current)" == main ]] || { echo 'EC2 프로젝트를 main 브랜치로 변경하세요.'; exit 1; }
-git pull --ff-only origin main
-npm ci
-npm run check
-npm test
-pm2 startOrRestart ecosystem.config.cjs --update-env
-pm2 save
+# 기존 Docker 메모를 유지하고, 이전 컨테이너는 실패 시 복원할 수 있게 보관합니다.
+name=docker-test-web
+backup=docker-test-web-previous
+if docker container inspect "$backup" >/dev/null 2>&1; then
+  echo '이전 복구용 컨테이너가 남아 있습니다. docker ps -a로 확인하세요.' >&2
+  exit 1
+fi
+had_previous=false
+if docker container inspect "$name" >/dev/null 2>&1; then
+  docker stop "$name"
+  docker rename "$name" "$backup"
+  had_previous=true
+fi
+rollback() {
+  docker logs "$name" --tail 30 2>/dev/null || true
+  docker rm -f "$name" >/dev/null 2>&1 || true
+  if [[ "$had_previous" == true ]]; then
+    docker rename "$backup" "$name"
+    docker start "$name"
+  fi
+}
+trap rollback ERR
 
-for attempt in {1..15}; do
-  if curl --fail --silent http://127.0.0.1:3000/health >/dev/null &&
-     curl --fail --silent http://127.0.0.1:3000/api/notes >/dev/null; then
-    echo '배포 완료'
-    exit 0
+docker run -d --name "$name" --restart unless-stopped \
+  -p 3000:3000 -v docker-test-data:/app/data "$image"
+healthy=false
+for attempt in {1..20}; do
+  if docker exec "$name" node --input-type=module -e '
+    for (const route of ["/health", "/api/notes"]) {
+      const response = await fetch("http://127.0.0.1:3000" + route, { signal: AbortSignal.timeout(3000) });
+      if (!response.ok) process.exit(1);
+    }
+  ' >/dev/null 2>&1; then
+    healthy=true
+    break
   fi
   sleep 2
 done
-pm2 logs docker-test --nostream --lines 30
-exit 1
+[[ "$healthy" == true ]]
+trap - ERR
+if [[ "$had_previous" == true ]]; then
+  docker rm "$backup"
+fi
+echo "배포 완료: $image"

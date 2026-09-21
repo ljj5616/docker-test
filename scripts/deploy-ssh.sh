@@ -17,4 +17,6 @@ options=(-i "$ssh_dir/key" -o IdentitiesOnly=yes -o BatchMode=yes
   -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$ssh_dir/known_hosts"
   -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
 target="$EC2_USER@$EC2_HOST"
-ssh "${options[@]}" "$target" 'bash -s' < scripts/deploy.sh
+: "${DEPLOY_IMAGE:?Missing ECR image}"
+[[ "$DEPLOY_IMAGE" =~ ^514287510278\.dkr\.ecr\.ap-northeast-2\.amazonaws\.com/docker-test:[a-f0-9]{40}-[0-9]+-[0-9]+$ ]] || { echo 'Invalid image'; exit 1; }
+ssh "${options[@]}" "$target" "bash -s -- '$DEPLOY_IMAGE'" < scripts/deploy.sh
