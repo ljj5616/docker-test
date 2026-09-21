@@ -29,7 +29,7 @@ Settings → Secrets and variables → Actions → New repository secret:
 
 GitHub는 액세스 키로 ECR에 이미지를 업로드합니다. 배포 때는 ECR 로그인 토큰만 SSH로 EC2에 전달하고 EC2의 Docker가 이미지를 다운로드합니다. AWS 개인키는 EC2로 복사하지 않습니다.
 
-EC2에 Docker가 실행 중이고 기존 컨테이너 이름이 docker-test-web, 볼륨 이름이 docker-test-data이면 그대로 사용합니다. 기존 PM2는 중지 상태여야 합니다. GitHub 실행기의 SSH 접근도 허용되어 있어야 합니다.
+EC2에 Docker와 Compose가 설치되어 있어야 합니다. 기존 docker-test-web 컨테이너는 첫 배포에서 Compose 웹으로 교체합니다. 기존 JSON 볼륨 docker-test-data는 보존하고 새 MySQL 데이터는 docker-test-mysql-data에 저장합니다. DB 비밀번호는 EC2의 ~/docker-test/.env에 최초 한 번 자동 생성합니다. 기존 PM2는 중지 상태여야 합니다. GitHub 실행기의 SSH 접근도 허용되어 있어야 합니다.
 
 태그는 커밋SHA-실행번호-시도번호로 생성합니다. GitHub Actions에서 ci → publish → deploy 성공을 확인하세요.
 
@@ -37,6 +37,7 @@ EC2에 Docker가 실행 중이고 기존 컨테이너 이름이 docker-test-web,
 
 - Actions의 ci, publish, deploy 성공 화면
 - ECR의 서로 다른 커밋 이미지 태그 목록
-- EC2의 docker ps 결과와 브라우저 메모 저장 화면
+- EC2의 docker compose ps 결과와 브라우저 메모 저장 화면
+- MySQL 테이블에서 같은 메모를 조회한 화면
 
-Compose와 DB 연결은 다음 단계입니다.
+Compose 설치 및 DB 조회 명령은 프로젝트 README.md에 있습니다.

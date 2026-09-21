@@ -2,51 +2,47 @@
 set -Eeuo pipefail
 image="${1:?ECR image required}"
 [[ "$image" =~ ^514287510278\.dkr\.ecr\.ap-northeast-2\.amazonaws\.com/docker-test:[a-f0-9]{40}-[0-9]+-[0-9]+$ ]] || exit 1
-command -v docker >/dev/null
+docker compose version >/dev/null
 docker info >/dev/null
-docker pull "$image"
+cd "${DEPLOY_DIR:-$HOME/docker-test}"
+umask 077
 
-# 기존 Docker 메모를 유지하고, 이전 컨테이너는 실패 시 복원할 수 있게 보관합니다.
-name=docker-test-web
-backup=docker-test-web-previous
-if docker container inspect "$backup" >/dev/null 2>&1; then
-  echo '이전 복구용 컨테이너가 남아 있습니다. docker ps -a로 확인하세요.' >&2
+# 처음 한 번만 생성합니다. 기존 DB를 재사용하므로 비밀번호를 다시 만들지 않습니다.
+if [[ ! -f .env ]]; then
+  printf 'MYSQL_PASSWORD=%s\nMYSQL_ROOT_PASSWORD=%s\n' \
+    "$(openssl rand -hex 24)" "$(openssl rand -hex 24)" > .env
+fi
+previous_image=$(sed -n 's/^WEB_IMAGE=//p' .env)
+export WEB_IMAGE="$image"
+compose=(docker compose -p docker-test --env-file .env -f compose.yaml)
+"${compose[@]}" config --quiet
+"${compose[@]}" pull
+# DB 준비에 실패해도 현재 웹 컨테이너는 계속 실행됩니다.
+"${compose[@]}" up -d --no-build --wait --wait-timeout 240 db
+
+legacy=false
+if docker container inspect docker-test-web >/dev/null 2>&1; then
+  docker stop docker-test-web
+  legacy=true
+fi
+if "${compose[@]}" up -d --no-build --wait --wait-timeout 180 web; then
+  awk '!/^WEB_IMAGE=/' .env > .env.next
+  printf 'WEB_IMAGE=%s\n' "$image" >> .env.next
+  mv .env.next .env
+  if [[ "$legacy" == true ]]; then
+    docker rm docker-test-web
+  fi
+  echo "Compose 배포 완료: $image"
+  "${compose[@]}" ps
+else
+  "${compose[@]}" logs --tail 30 web db || true
+  if [[ -n "$previous_image" ]]; then
+    export WEB_IMAGE="$previous_image"
+    "${compose[@]}" up -d --no-build --wait --wait-timeout 120 web || true
+  else
+    "${compose[@]}" stop web || true
+    if [[ "$legacy" == true ]]; then docker start docker-test-web; fi
+  fi
+  echo '새 버전 배포에 실패했습니다. 위 상태와 로그를 확인하세요.' >&2
   exit 1
 fi
-had_previous=false
-if docker container inspect "$name" >/dev/null 2>&1; then
-  docker stop "$name"
-  docker rename "$name" "$backup"
-  had_previous=true
-fi
-rollback() {
-  docker logs "$name" --tail 30 2>/dev/null || true
-  docker rm -f "$name" >/dev/null 2>&1 || true
-  if [[ "$had_previous" == true ]]; then
-    docker rename "$backup" "$name"
-    docker start "$name"
-  fi
-}
-trap rollback ERR
-
-docker run -d --name "$name" --restart unless-stopped \
-  -p 3000:3000 -v docker-test-data:/app/data "$image"
-healthy=false
-for attempt in {1..20}; do
-  if docker exec "$name" node --input-type=module -e '
-    for (const route of ["/health", "/api/notes"]) {
-      const response = await fetch("http://127.0.0.1:3000" + route, { signal: AbortSignal.timeout(3000) });
-      if (!response.ok) process.exit(1);
-    }
-  ' >/dev/null 2>&1; then
-    healthy=true
-    break
-  fi
-  sleep 2
-done
-[[ "$healthy" == true ]]
-trap - ERR
-if [[ "$had_previous" == true ]]; then
-  docker rm "$backup"
-fi
-echo "배포 완료: $image"

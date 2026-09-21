@@ -12,10 +12,11 @@ const assets = new Map([
   ['/style.css', ['style.css', 'text/css; charset=utf-8']],
 ]);
 
-export function createApp({ dataDir = process.env.DATA_DIR || path.join(root, 'data') } = {}) {
+export function createApp({ dataDir = process.env.DATA_DIR || path.join(root, 'data'), store } = {}) {
   const file = path.join(dataDir, 'notes.json');
   let queue = Promise.resolve();
   async function readNotes() {
+    if (store) return store.list();
     try {
       const notes = JSON.parse(await readFile(file, 'utf8'));
       if (!Array.isArray(notes)) throw new Error('Invalid notes file');
@@ -34,7 +35,10 @@ export function createApp({ dataDir = process.env.DATA_DIR || path.join(root, 'd
     res.setHeader('Content-Security-Policy', "default-src 'self'; frame-ancestors 'none'; base-uri 'none'");
     try {
       const url = new URL(req.url, 'http://localhost');
-      if (req.method === 'GET' && url.pathname === '/health') return json(res, 200, { status: 'ok' });
+      if (req.method === 'GET' && url.pathname === '/health') {
+        if (store) await store.ping();
+        return json(res, 200, { status: 'ok', ...(store ? { storage: 'mysql' } : {}) });
+      }
       if (req.method === 'GET' && url.pathname === '/api/notes') {
         await queue;
         return json(res, 200, await readNotes());
@@ -58,6 +62,7 @@ export function createApp({ dataDir = process.env.DATA_DIR || path.join(root, 'd
         }
         const note = { id: randomUUID(), content: body.content.trim(), createdAt: new Date().toISOString() };
         const save = queue.then(async () => {
+          if (store) return store.save(note);
           const notes = await readNotes();
           notes.unshift(note);
           await mkdir(dataDir, { recursive: true });

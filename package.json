@@ -4,11 +4,16 @@
   "private": true,
   "description": "컨테이너 없이 실행하는 간단한 Node.js 메모장",
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "test": "node --test",
-    "check": "node --check src/server.js && node --check src/app.js && node --check public/app.js"
+    "check": "node --check src/server.js && node --check src/app.js && node --check src/mysql-store.js && node --check public/app.js"
+  },
+  "dependencies": {
+    "mysql2": "^3.24.4"
   }
 }

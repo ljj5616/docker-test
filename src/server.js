@@ -1,6 +1,8 @@
 import { createApp } from './app.js';
+import { createMysqlStore } from './mysql-store.js';
 
-const server = createApp();
+const store = process.env.DB_HOST ? await createMysqlStore() : undefined;
+const server = createApp({ store });
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || '0.0.0.0';
 server.listen(port, host, () => {
@@ -8,7 +10,10 @@ server.listen(port, host, () => {
 });
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.on(signal, () => {
-    server.close(() => process.exit(0));
+    server.close(async () => {
+      await store?.close();
+      process.exit(0);
+    });
     setTimeout(() => process.exit(1), 10000).unref();
   });
 }

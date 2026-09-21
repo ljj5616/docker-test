@@ -22,4 +22,6 @@ target="$EC2_USER@$EC2_HOST"
 # AWS 개인키는 GitHub에 두고, ECR 로그인 토큰만 SSH 표준입력으로 전달합니다.
 aws ecr get-login-password --region ap-northeast-2 | \
   ssh "${options[@]}" "$target" 'docker login --username AWS --password-stdin 514287510278.dkr.ecr.ap-northeast-2.amazonaws.com'
+ssh "${options[@]}" "$target" 'mkdir -p "$HOME/docker-test"'
+scp "${options[@]}" compose.yaml "$target:docker-test/compose.yaml"
 ssh "${options[@]}" "$target" "bash -s -- '$DEPLOY_IMAGE'" < scripts/deploy.sh

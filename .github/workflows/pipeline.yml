@@ -36,7 +36,7 @@ jobs:
         run: bash test/deploy.test.sh
       - name: Build Docker image
         run: docker build -t docker-test:ci .
-      - name: Test container saving and restart
+      - name: Test Compose web and MySQL persistence
         run: bash scripts/test-container.sh
       - name: Save tested image
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
