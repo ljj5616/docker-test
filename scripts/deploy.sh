@@ -1,12 +1,9 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 image="${1:?ECR image required}"
-registry=514287510278.dkr.ecr.ap-northeast-2.amazonaws.com
 [[ "$image" =~ ^514287510278\.dkr\.ecr\.ap-northeast-2\.amazonaws\.com/docker-test:[a-f0-9]{40}-[0-9]+-[0-9]+$ ]] || exit 1
-command -v aws >/dev/null
 command -v docker >/dev/null
 docker info >/dev/null
-aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin "$registry"
 docker pull "$image"
 
 # 기존 Docker 메모를 유지하고, 이전 컨테이너는 실패 시 복원할 수 있게 보관합니다.

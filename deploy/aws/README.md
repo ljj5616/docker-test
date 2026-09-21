@@ -1,61 +1,42 @@
-# ECR 권한 설정 — 최초 한 번
+# 간단한 ECR 인증 설정
 
-저장소: `514287510278.dkr.ecr.ap-northeast-2.amazonaws.com/docker-test`
+역할과 OIDC 대신 IAM 사용자 액세스 키를 사용합니다. EC2에는 별도 AWS 설정이 필요 없습니다.
 
-GitHub는 업로드 역할, EC2는 다운로드 역할을 사용합니다. 기존 EC2 SSH Secrets 네 개는 그대로 유지합니다. AWS 액세스 키를 GitHub에 추가할 필요가 없는 OIDC 방식입니다.
+## 1. IAM 사용자 만들기
 
-## 1. GitHub용 역할
+AWS IAM → 사용자 → 사용자 생성에서 `docker-test-deploy`를 만듭니다. AWS 콘솔 로그인 권한은 필요 없습니다.
 
-1. AWS IAM → 자격 증명 공급자 → 공급자 추가 → OpenID Connect를 선택합니다.
-2. 공급자 URL: `https://token.actions.githubusercontent.com`, 대상(Audience): `sts.amazonaws.com`. 같은 공급자가 이미 있으면 재사용합니다.
-3. IAM → 정책 → 정책 생성 → JSON에서 `github-ecr-push.json` 내용을 붙여넣고 `docker-test-ecr-push`로 생성합니다.
-4. IAM → 역할 → 역할 생성 → 사용자 지정 신뢰 정책에서 `github-trust.json` 내용을 붙여넣습니다.
-5. 위 정책을 연결하고 역할 이름을 **github-docker-test-ecr**로 지정합니다. 코드가 이 이름의 ARN을 사용합니다.
+사용자 상세 → 권한 → 권한 추가 → 인라인 정책 생성 → JSON에 같은 폴더의 `github-ecr-push.json`을 붙여넣고 `docker-test-ecr`로 저장합니다. 이 정책은 docker-test ECR 저장소의 업로드·다운로드만 허용합니다.
 
-신뢰 정책은 `ljj5616/docker-test` 저장소의 main 브랜치만 허용합니다. 다른 저장소 이름이나 브랜치로 변경할 때에는 신뢰 정책도 변경해야 합니다.
+## 2. 액세스 키 생성
 
-## 2. EC2용 역할
+사용자 상세 → 보안 자격 증명 → 액세스 키 만들기에서 GitHub Actions처럼 AWS 외부에서 사용하는 용도에 맞는 항목을 선택합니다. 생성된 액세스 키 ID와 비밀 액세스 키를 다음 단계에 사용합니다. 루트 계정 키를 만들 필요는 없습니다.
 
-1. IAM → 정책 → 정책 생성 → JSON에서 `ec2-ecr-pull.json` 내용을 붙여넣고 `docker-test-ecr-pull`로 생성합니다.
-2. IAM → 역할 → 역할 생성 → AWS 서비스 → EC2를 선택합니다.
-3. 위 정책을 연결하고 `ec2-docker-test-ecr`로 생성합니다.
-4. EC2 → 인스턴스 선택 → 작업 → 보안 → IAM 역할 수정에서 역할을 연결합니다.
+## 3. GitHub Secrets 두 개 추가
 
-이미 EC2에 다른 역할이 연결되어 있다면 기존 역할에 pull 정책을 추가하세요. 기존 역할을 불필요하게 교체하지 않습니다.
+Settings → Secrets and variables → Actions → New repository secret:
 
-EC2에서 확인합니다.
+| 이름 | 값 |
+| --- | --- |
+| AWS_ACCESS_KEY_ID | 액세스 키 ID |
+| AWS_SECRET_ACCESS_KEY | 비밀 액세스 키 |
 
-```sh
-aws --version
-aws sts get-caller-identity
-aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin 514287510278.dkr.ecr.ap-northeast-2.amazonaws.com
-```
+키는 코드나 채팅, 제출 캡처에 넣지 않습니다. 기존 EC2_HOST, EC2_USER, EC2_SSH_KEY, EC2_KNOWN_HOSTS는 그대로 사용합니다.
 
-AWS CLI가 없다면 Amazon Linux 2023에서 `sudo dnf install -y awscli2`로 설치합니다. IAM 역할을 연결하면 EC2에 `aws configure`로 개인 액세스 키를 저장할 필요가 없습니다.
+## 4. 변경 코드 push
 
-## 3. 배포 전 확인
+변경 코드를 main에 반영하면 새로운 워크플로가 실행됩니다. 이전 OIDC 실행을 재실행하면 이전 코드를 사용하므로, 반드시 변경한 코드로 실행하세요.
 
-- Docker 엔진 실행 및 ec2-user의 Docker 실행 권한이 필요합니다. 이미 Docker 수동 실행이 성공했다면 그대로 사용합니다.
-- 기존 PM2 앱은 중지 상태여야 합니다. PM2 재부팅 복원을 설정했다면 `pm2 delete docker-test`와 `pm2 save --force`로 이 앱을 PM2 목록에서도 제거합니다. 메모 파일은 삭제되지 않습니다.
-- 컨테이너 이름 `docker-test-web`, 데이터 볼륨 `docker-test-data`를 그대로 사용합니다. 다른 이름으로 수동 실행했다면 먼저 실행 상태를 확인하세요.
-- 기존 TCP 3000 및 SSH 접근 설정은 그대로 사용합니다.
-- 현재 EC2는 x86_64이므로 GitHub의 ubuntu-latest에서 빌드한 linux/amd64 이미지를 사용합니다. ARM EC2로 변경할 때에는 빌드 플랫폼도 변경해야 합니다.
+GitHub는 액세스 키로 ECR에 이미지를 업로드합니다. 배포 때는 ECR 로그인 토큰만 SSH로 EC2에 전달하고 EC2의 Docker가 이미지를 다운로드합니다. AWS 개인키는 EC2로 복사하지 않습니다.
 
-## 4. 실행 및 과제 캡처
+EC2에 Docker가 실행 중이고 기존 컨테이너 이름이 docker-test-web, 볼륨 이름이 docker-test-data이면 그대로 사용합니다. 기존 PM2는 중지 상태여야 합니다. GitHub 실행기의 SSH 접근도 허용되어 있어야 합니다.
 
-AWS 설정을 완료한 후 변경 코드를 main에 push합니다. Actions에서 **ci → publish → deploy**가 성공하는지 확인하세요. 수동 실행 메뉴 이름은 `Docker CI and ECR CD`입니다.
+태그는 커밋SHA-실행번호-시도번호로 생성합니다. GitHub Actions에서 ci → publish → deploy 성공을 확인하세요.
 
-태그는 `커밋SHA-실행번호-시도번호`입니다. 같은 커밋을 다시 실행해도 별도 태그를 사용하므로 ECR의 태그 변경 불가 설정도 사용할 수 있습니다. latest 태그에 의존하지 않습니다.
+## 과제 캡처
 
-EC2는 지정된 태그를 pull하고 컨테이너를 교체합니다. git pull이나 Node.js·PM2 설치는 배포에 사용하지 않습니다. 기존 Docker 볼륨을 재사용하며 교체 중 잠시 접속이 끊길 수 있습니다. 새 컨테이너 상태 확인이 실패하면 이전 컨테이너가 있을 경우 다시 시작합니다.
+- Actions의 ci, publish, deploy 성공 화면
+- ECR의 서로 다른 커밋 이미지 태그 목록
+- EC2의 docker ps 결과와 브라우저 메모 저장 화면
 
-제출 화면:
-
-1. Actions의 ci/publish/deploy 성공 화면과 Docker 빌드·컨테이너 테스트 로그
-2. ECR의 커밋별 이미지 태그 목록 (서로 다른 커밋 두 개 권장)
-3. `docker ps`에서 ECR 이미지로 실행 중인 화면
-4. 브라우저에서 메모 저장 및 재배포 후 유지 확인
-
-Docker Compose와 DB 연결은 아직 구현 전이며 다음 과제 단계입니다.
-
-공식 참고: [GitHub OIDC](https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-aws), [ECR 업로드 권한](https://docs.aws.amazon.com/AmazonECR/latest/userguide/image-push-iam.html).
+Compose와 DB 연결은 다음 단계입니다.

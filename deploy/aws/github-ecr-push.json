@@ -14,7 +14,8 @@
         "ecr:UploadLayerPart",
         "ecr:CompleteLayerUpload",
         "ecr:PutImage",
-        "ecr:BatchGetImage"
+        "ecr:BatchGetImage",
+        "ecr:GetDownloadUrlForLayer"
       ],
       "Resource": "arn:aws:ecr:ap-northeast-2:514287510278:repository/docker-test"
     }

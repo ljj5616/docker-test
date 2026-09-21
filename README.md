@@ -30,7 +30,7 @@ PM2 등 다른 프로세스가 3000번 포트를 사용 중이면 먼저 중지�
 
 PR은 CI만 실행하고, main push/merge 또는 main 수동 실행은 업로드와 배포까지 진행합니다. EC2에서 git pull하거나 PM2를 재시작하는 방식은 더 이상 사용하지 않습니다. EC2의 Git 작업 폴더가 갱신되지 않아도 정상입니다.
 
-**처음에는 [AWS 권한 설정 안내](deploy/aws/README.md)를 완료해야 합니다.** GitHub용 OIDC 역할과 EC2용 ECR 읽기 역할을 준비합니다. 필요한 IAM JSON 파일도 같은 폴더에 있습니다. AWS 장기 액세스 키를 새로 발급할 필요는 없습니다.
+**처음에는 [AWS 인증 설정 안내](deploy/aws/README.md)를 완료해야 합니다.** ECR 접근 권한이 있는 IAM 사용자 액세스 키를 GitHub Secrets에 등록합니다. OIDC와 IAM 역할은 사용하지 않습니다. EC2에 AWS 키나 AWS CLI를 설치할 필요도 없습니다.
 
 기존 Repository secrets는 유지합니다.
 
@@ -40,6 +40,8 @@ PR은 CI만 실행하고, main push/merge 또는 main 수동 실행은 업로드
 | EC2_USER | ec2-user |
 | EC2_SSH_KEY | EC2 접속용 PEM 개인키 |
 | EC2_KNOWN_HOSTS | EC2주소 ssh-ed25519 호스트공개키 |
+| AWS_ACCESS_KEY_ID | IAM 사용자 액세스 키 ID |
+| AWS_SECRET_ACCESS_KEY | 해당 비밀 액세스 키 |
 
 ENABLE_CD 변수, production 환경, EC2 self-hosted runner 등록은 필요 없습니다. SSH 호스트 공개키는 신뢰할 수 있는 EC2 터미널에서 `sudo cat /etc/ssh/ssh_host_ed25519_key.pub`로 확인하고 앞에 EC2_HOST와 같은 주소를 붙입니다.
 
@@ -71,7 +73,7 @@ npm test
 ## 과제 진행 상태
 
 - Dockerfile 및 컨테이너 실행: 구성 완료
-- GitHub Actions Docker CI 및 ECR 배포: 코드 작성 완료, AWS 역할 설정 후 실제 실행 확인 필요
+- GitHub Actions Docker CI 및 ECR 배포: 코드 작성 완료, AWS 액세스 키 등록 후 실제 실행 확인 필요
 - Compose 웹·DB 연동: 다음 단계
 
 제출용 캡처 목록은 [AWS 설정 안내](deploy/aws/README.md)의 마지막 항목을 참고하세요.
